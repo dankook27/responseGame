@@ -16,8 +16,6 @@ let rounds = [];
 let goTimer = null;
 let startTime = 0;
 let allHistory = [];
-let sessionAttempts = 0;
-let chartData = [];
 
 const arena        = document.getElementById('arena');
 const screens      = {
@@ -55,7 +53,7 @@ document.getElementById('retry-btn').addEventListener('click', e => {
 const storedBest = parseInt(localStorage.getItem('reflex_best') || '0');
 if (storedBest) globalBestEl.textContent = storedBest + 'ms';
 
-function getRating(ms) { return RATINGS.find(r => ms < r.max); }
+function getRating(ms) { return RATINGS.find(r => ms < r.max) ?? RATINGS[RATINGS.length - 1]; }
 
 function buildDots(container, total, done, current) {
   container.innerHTML = '';
@@ -115,7 +113,9 @@ function startRound() {
     gameState = 'go';
     setArenaState('go');
     showScreen('go');
-    startTime = performance.now();
+    requestAnimationFrame(() => {
+      startTime = performance.now();
+    });
   }, delay);
 }
 
@@ -130,11 +130,9 @@ function earlyClick() {
 function registerClick() {
   const ms = Math.round(performance.now() - startTime);
   rounds.push(ms);
-  sessionAttempts++;
   const rating = getRating(ms);
 
   allHistory.unshift({ ms, rating, time: new Date() });
-  chartData.push(ms);
 
   // Update localStorage best
   const prev = parseInt(localStorage.getItem('reflex_best') || '99999');
@@ -146,14 +144,14 @@ function registerClick() {
   }
 
   updateSessionStats();
-  addHistoryEntry({ ms, rating, n: sessionAttempts });
-  if (chartData.length > 1) { chartWrap.style.display = ''; drawChart(); }
+  addHistoryEntry({ ms, rating, n: allHistory.length });
+  if (allHistory.length > 1) { chartWrap.style.display = ''; drawChart(); }
 
   gameState = 'result';
   setArenaState('result');
   buildDots(resultRoundDots, ROUNDS, currentRound, currentRound);
   resultTimeEl.textContent = ms;
-  resultRatingEl.textContent = rating.label;
+  resultRatingEl.textContent = rating.text;
   resultRatingEl.className = `result-rating r-${rating.key}`;
   const remaining = ROUNDS - (currentRound + 1);
   resultHintEl.textContent = remaining > 0
@@ -176,7 +174,7 @@ function showFinal() {
   const rating = getRating(avg);
 
   finalAvgEl.textContent = avg;
-  finalRatingBox.textContent = `${rating.label} — ${rating.text}`;
+  finalRatingBox.textContent = rating.text;
   finalRatingBox.className = `final-rating-box final-${rating.key}`;
 
   roundListEl.innerHTML = '';
@@ -193,7 +191,7 @@ function showFinal() {
 function updateSessionStats() {
   const all = allHistory.map(h => h.ms);
   const avg = Math.round(all.reduce((a, b) => a + b, 0) / all.length);
-  statAttempts.textContent = sessionAttempts;
+  statAttempts.textContent = allHistory.length;
   statAvg.textContent      = avg + 'ms';
   statBest.textContent     = Math.min(...all) + 'ms';
   statWorst.textContent    = Math.max(...all) + 'ms';
@@ -227,7 +225,7 @@ function drawChart() {
   histCanvas.width  = w;
   histCanvas.height = h;
 
-  const data  = chartData.slice(-30);
+  const data  = allHistory.map(h => h.ms).reverse().slice(-30);
   const min   = Math.min(...data) - 20;
   const max   = Math.max(...data) + 20;
   const range = max - min || 1;
